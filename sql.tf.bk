@@ -1,0 +1,68 @@
+# Cloud SQL(MySQL5.7) マスター
+resource "google_sql_database_instance" "primary" {
+  name = "${var.system-name}-test"
+  region = "${var.region}"
+
+  database_version = "MYSQL_5_7"
+  settings = {
+    tier = "db-n1-standard-1"
+    backup_configuration = {
+      # 日本時間の月曜日午前３時
+      start_time = "18:00"
+      binary_log_enabled = true
+      enabled = true
+    }
+    maintenance_window = {
+      # 日本時間の月曜日午前０時
+      day = "7" // Day of week 1-7, 1=Monday
+      hour = "15"
+    }
+    ip_configuration = {
+      ipv4_enabled = true
+      require_ssl = true
+    }
+  }
+}
+
+# Cloud SQL(MySQL5.7) フェイルオーバーレプリカ
+resource "google_sql_database_instance" "failover" {
+
+  name = "${google_sql_database_instance.primary.name}-failover"
+  region = "${google_sql_database_instance.primary.region}"
+
+  database_version = "${google_sql_database_instance.primary.database_version}"
+  settings = {
+    tier = "db-n1-standard-1"
+    ip_configuration = {
+      ipv4_enabled = true
+      require_ssl = true
+    }
+  }
+
+  replica_configuration = {
+    failover_target = true
+  }
+  master_instance_name = "${google_sql_database_instance.primary.name}"
+}
+
+# Cloud SQL(MySQL5.7) root(管理者)ユーザパスワード設定
+resource "google_sql_user" "root" {
+  instance = "${google_sql_database_instance.primary.name}"
+  host     = ""
+  name     = "root"
+  password = "12345678"
+}
+
+# Cloud SQL(MySQL5.7) データベース作成
+resource "google_sql_database" "primary" {
+  name     = "${var.system-name}"
+  instance = "${google_sql_database_instance.primary.name}"
+}
+
+# Cloud SQL(MySQL5.7) サービス用ユーザ作成
+resource "google_sql_user" "test" {
+  instance = "${google_sql_database_instance.primary.name}"
+  host     = "%"
+  name     = "test"
+  password = "12345678"
+}
